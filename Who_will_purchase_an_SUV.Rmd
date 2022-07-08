@@ -1,0 +1,368 @@
+---
+title: "WHO WILL PURCHASE AN SUV?"
+author: "Authors: Gabriele Sollai, Stefano Apicella"
+output: ioslides_presentation
+---
+<style type="text/css">
+.title-slide {
+  background-color: white;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain; 
+  position: relative;
+}
+.title-slide hgroup {
+  position: absolute;
+  width: auto;
+  height: auto;
+  right: 10px;
+  bottom: 10px;
+}
+.title-slide hgroup > h1{
+  font-weight: bold;
+  font-size: 40pt;
+  color: darkred;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.title-slide hgroup > h2,
+.title-slide hgroup > p {
+  margin: 0;
+  font-weight: bold;
+  font-size: 20pt;
+  color: darkred;
+  text-align: right;
+}
+
+h2 {color:darkred}
+h3 {color:darkblue}
+
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+body{ font-size: 12px;
+  }
+code.r{ font-size: 12px;
+}
+pre { font-size: 14px;
+}
+</style> 
+
+## *WORK SUMMARY*
+
+In this project we'll apply a Logistic model to a dataset called "SUV Purchase Decision". 
+This dataset can be found on Kaggle at this link: https://www.kaggle.com/arnabdata/suv-purchase-decision. 
+It has been uploaded and updated by Arnab Dhar who asks to Kaggle's community to predict who will be a new purchaser of SUV cars.
+In this analysis we'll try to accomplish this goal with some regression tools prebuilt in R and some other function created by us.
+
+## *WORK SCHEDULE*
+
+1. **Install and load packages**
+
+2. **Load, Visualize and Summarise the Dataset**
+
+3. **Data Manipulation**
+
+4. **Data Visualization**
+
+5. **Logistic Regression**
+
+6. **Models Validation**
+
+7. **Predictions**
+
+## **INSTALL AND LOAD PACKAGES**
+
+```{r, warning = FALSE, message = FALSE}
+### 
+## ONLY IF NEEDED
+# install.packages("ggplot2")
+# install.packages("pscl")
+# install.packages("ROCR")
+# install.packages("grid")
+# install.packages("gridExtra")
+###
+
+library(ggplot2)
+library(pscl)
+library(ROCR)
+library(caret)
+library(e1071)
+library(gridExtra)
+library(grid)
+```
+
+## **LOAD, VISUALIZE AND SUMMARIZE THE DATASET**
+### **LOAD THE DATASET**
+
+As we said in work summary, this dataset is downloadable just using a Kaggle account, for this project we attached it in project folder sent before.
+First thing first, the reader has to set a working directory to read the file on RStudio, you'll just have to change the source that you can find on the project folder properties. In our case it will be:
+
+```{r}
+setwd("C:/Users/Utente/Desktop/Sollai-Apicella")
+dati.suv <- read.table("SUV_Purchase.csv", header=TRUE, sep=",",
+                       dec=".", row.names = "User.ID")
+```
+
+## **VISUALIZE THE DATASET**
+
+```{r, comment = ""}
+str(dati.suv)
+head(dati.suv,n=14)
+```
+
+## **SUMMARIZE THE DATASET**
+
+```{r, comment = ""}
+summary(dati.suv)
+```
+
+As shown, there are not missing values in it in any of our variables, so we can proceed with data manipulation.
+
+## **DATA MANIPULATION**
+
+As we've seen in the previous slide, we have some problems about the format of some variables.
+We'll manipulate them, forcing them to be factor variable, and we'll see if these problems will be eliminated.
+
+```{r, comment = ""}
+dati.suv$Purchased <- as.factor(dati.suv$Purchased)
+dati.suv$Gender <- as.factor(ifelse(dati.suv$Gender == "Male", 1, 0))
+summary(dati.suv)
+```
+
+## **DATA VISUALIZATION**
+### *Salaries Boxplot against Purchase of an SUV*
+
+We indicate with the red boxplot the customers who have not bought. 
+They have a lower median than the customers who have bought, indicated in blue.
+
+```{r, comment = "", echo = FALSE, fig.align='center'}
+ggplot(dati.suv, aes(Purchased, EstimatedSalary, fill = Purchased)) + 
+  geom_boxplot(outlier.color = "red", notch = TRUE, col = "black") +
+  theme_bw()
+```
+
+***
+### *Age's Boxplot against Purchase of an SUV*
+
+We have similar results with the age's boxplot
+
+```{r, comment = "", echo = FALSE, fig.align = 'center'}
+ggplot(dati.suv, aes(Purchased, Age, fill = Purchased)) + 
+  geom_boxplot(outlier.color = "red", notch = TRUE, col = "black") +
+  theme_bw()
+```
+
+
+***
+### *Histogram of Age variable against Purchase of an SUV*
+
+```{r, comment = "", echo = FALSE, fig.align = 'center', warning=FALSE}
+ggplot(dati.suv, aes(Age, fill = Purchased)) +
+  geom_histogram(stat = "Count", col = "black") + 
+  theme_bw()
+
+```
+
+***
+### *Histogram of Salaries against Purchase of an SUV*
+
+```{r, comment = "", echo = FALSE, fig.align = 'center', warning = FALSE}
+ggplot(dati.suv, aes(EstimatedSalary, fill = Purchased)) +
+  geom_histogram(stat = "bin", col = "black", bins = 35) + 
+  theme_bw()
+
+```
+
+***
+### *Genders Barplot by Purchase an SUV*
+
+The barplot indicates in red the customers who have not bought and in blue those who have bought.
+We remember that males were indicated with 1 and the females with 0.
+As shown, there are not relevant differences between the two genders.
+```{r, comment = "", echo = FALSE, fig.align = 'center', warning = FALSE}
+ggplot(dati.suv, aes(Gender, fill = Purchased)) +
+  geom_bar(stat = "count", col = "black", position=position_dodge())
+
+```
+
+## **LOGISTIC REGRESSION**
+### **Classification**
+We split our dataset to train our model, creating a test set and a validation set.
+We choose a 70:30 proportion. We then setted a seed in order to have same results even if running code on different computers.
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+n <- nrow(dati.suv)
+set.seed(4)
+tot.suv <- sample(1:n,floor(0.7*n)) 
+est.suv <- dati.suv[tot.suv,]
+val.suv <- dati.suv[-tot.suv,]
+summary(est.suv)
+```
+
+***
+### *Model estimation*
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+glm.suv <- glm(Purchased ~ Gender + EstimatedSalary + Age, 
+               family=binomial, data=est.suv)
+summary(glm.suv)
+```
+
+As we can see from the summary, the gender variable is not significantly different from 0.
+
+***
+### *Model Validation*
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+anova(glm.suv, test="Chisq")
+```
+**anova()** sequentially compares the smaller model to the next more complex model by adding a variable in each step.
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+pR2(glm.suv)
+```
+After these analysis, we'll eliminate the Gender variable for the next model, using backward elimination process for variable selection.
+
+***
+### *New Model Estimation*
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+glm.suv2<-glm(Purchased ~ EstimatedSalary + Age,
+              family=binomial, data=est.suv)
+summary(glm.suv2)
+```
+In this new model, all of the coefficients are significantly different from 0.
+AIC is a little bit smaller and this could be expected since we eliminated a parameter.
+We'll see with Model Validation if this will be appropriate for previsions.
+
+***
+### *New Model Validation*
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+anova(glm.suv2, test="Chisq")
+```
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+pR2(glm.suv2)
+```
+***
+### *Coefficient Interpretation*
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+coef(glm.suv2)
+```
+We know, from logit's theory, that these coefficients don't represent each variable's impact on probabilities!
+They represent, instead, the impact on a transformation: the logarithm of the odds.
+Both variables have a positive effect on logit.
+We can transform coefficients from logit to odds to read them in an easier way:
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+odds.coef <- exp(coef(glm.suv2))[-1]
+odds.coef
+```
+
+In the Predictions Section we'll see which are, instead, the probabilities to have a better view on how our model estimate them.
+
+***
+### *Fitting Results and Printing the Accuracy*
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+fitted.results <- predict(glm.suv2,newdata=val.suv,type='response')
+fitted.results <- ifelse(fitted.results > 0.5,1,0)
+claserror <- mean(fitted.results !=val.suv$Purchased)
+print(paste('Accuracy',1-claserror))
+```
+
+As we can see we have an high degree of accuracy on the Train Set: about 0.84.
+In the coming slides we'll see then how to apply this model on the out of the sample set.
+
+***
+### *Receiver Operating Characteristic*
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+p <- predict(glm.suv2,newdata=val.suv,type='response') 
+pr <- prediction(p, val.suv$Purchased)
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+abline(0,1)
+```
+
+***
+### *Confusion Matrix*
+```{r, comment = "", echo = FALSE, fig.align = 'center', warning = FALSE }
+fitted.results <- as.factor(fitted.results)
+val.suv$Purchased<-as.factor(val.suv$Purchased)
+```
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+confusionMatrix(fitted.results, val.suv$Purchased)
+```
+We can see from this output how our model is working. We can see that 71 times predicted a 0 when it was really 0. It predicted then 30 times 1 in correct way. Instead it predicted a 0 when in reality the result was 1 seven times, producing a small number of type 2 error. It produced 12 type 1 error too because it predicted a purchase but there was a reject in reality.
+
+
+## **PREDICTIONS**
+We can now predict the probability of purchasing the SUV knowing customer's age and salary. 
+We defined a function, f.pre(), that receives as input the age and the salary, and returns as output the estimated probability for that purchase.
+Second step of this was to create a random list of customers, each one with their age, salary and estimated probability, using our chosen model.
+```{r, comment = "", echo=FALSE, fig.align = 'center', warning = FALSE }
+f.pre<-function(age,salary){ #Input variables
+  va.x <- c("Age", "EstimatedSalary")
+  x1 <-c(age,salary)
+  new.suv <- data.frame(rbind(x1))
+  colnames(new.suv) <- va.x
+  Probability <- predict(glm.suv2,newdata=new.suv,type='response') #applying our model
+  return(Probability)
+}
+```
+
+```{r, comment = "", fig.align = 'center', warning = FALSE }
+newdata <- data.frame(Age = sample(dati.suv$Age, 20), Salary = sample(dati.suv$EstimatedSalary, 20)) 
+Probability <- vector(mode = "numeric", length = 20)
+for(i in 1:20){
+  Probability[i] <- f.pre(newdata$Age[i], newdata$Salary[i])
+  tab <- cbind(newdata, Probability)
+}
+tab
+```
+
+***
+### *Predictions on different types of customer*
+```{r, comment = "", echo=FALSE, fig.align = 'center', warning = FALSE }
+#Applying our function to new age and salary couples in order to have the final double way table
+cliente.medio<-f.pre(mean(dati.suv$Age),mean(dati.suv$EstimatedSalary))
+cliente.teen.low<-f.pre(min(dati.suv$Age),min(dati.suv$EstimatedSalary))
+cliente.teen.high<-f.pre(min(dati.suv$Age),max(dati.suv$EstimatedSalary))
+cliente.old.high<-f.pre(max(dati.suv$Age),max(dati.suv$EstimatedSalary))
+cliente.old.low<-f.pre(max(dati.suv$Age),min(dati.suv$EstimatedSalary))
+cliente.m.low<-f.pre(mean(dati.suv$Age),min(dati.suv$EstimatedSalary))
+cliente.m.high<-f.pre(mean(dati.suv$Age),max(dati.suv$EstimatedSalary))
+cliente.teen.m<-f.pre(min(dati.suv$Age),mean(dati.suv$EstimatedSalary))
+cliente.old.m<-f.pre(max(dati.suv$Age),mean(dati.suv$EstimatedSalary))
+col.age <- c("Teen", "Adult","Old")
+row.salary<-c("Low","Mean","High")
+poor<-c(cliente.teen.low,cliente.m.low,cliente.old.low)
+meansal<-c(cliente.teen.m,cliente.medio,cliente.old.m)
+rich<-c(cliente.teen.high,cliente.m.high,cliente.old.high)
+tab.prob <- data.frame(rbind(poor,meansal,rich))
+colnames(tab.prob) <- col.age
+rownames(tab.prob)<- row.salary
+```
+We created then a double way table that shows us what is the probability of purchasing an SUV for a specific customer within a certain income class and a certain range of age. We can now have some other information about the probabilities distribution over these two variables.
+```{r, comment = "", fig.align='left' ,warning = FALSE }
+tt <- ttheme_default(colhead=list(fg_params = list(parse=TRUE))) #setting the theme for the table
+grid.table(tab.prob, theme=tt)
+```
+Many conclusions can be assumed about this table.
+The case with the highest probability is the one of the **old customer** with an **high salary**.
+The salary is not very influential in the case of the **young customer**.
+The reason for which we assume this is that young people have poor driving experience, so they buy cars that are easier to drive.
+For the customer who has an **average age**, the probability of buying the SUV instead depends a lot on the salary.
+The customer with an **average age and average salary** has the 26% of probability to buy the SUV but this increase a lot when age or salary increase.
